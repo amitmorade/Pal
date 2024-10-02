@@ -1,36 +1,36 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 const vscode = require('vscode');
-
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-
+const axios = require('axios');
+const { XMLParser } = require('fast-xml-parser');
 /**
  * @param {vscode.ExtensionContext} context
  */
-function activate(context) {
-
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "pal" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with  registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('pal.helloWorld', function () {
-		// The code you place here will be executed every time your command is executed
-
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from pal!');
-	});
-
-	context.subscriptions.push(disposable);
+async function activate(context) {
+    try {
+        const res = await axios.get("https://blog.webdevsimplified.com/rss.xml");
+        const parser = new XMLParser();
+        const parsedData = parser.parse(res.data);
+        const articles = parsedData.rss.channel.item.map(article => ({
+            label: article.title,
+            detail: article.description,
+            link: article.link,
+        }));
+        if (article == null) return
+        vscode.env.openExternal(article.link);
+        const disposable = vscode.commands.registerCommand('pal.helloWorld',
+            async function () {
+                vscode.window.showInformationMessage('Solly is on its way!');
+                const article = await vscode.window.showQuickPick(articles, {
+                    matchOnDetail: true
+                })
+                console.log(article);
+            });
+        context.subscriptions.push(disposable);
+    } catch (error) {
+        console.error('Error fetching or parsing XML:', error);
+    }
 }
-
-// This method is called when your extension is deactivated
-function deactivate() {}
-
+function deactivate() { }
 module.exports = {
-	activate,
-	deactivate
+    activate,
+    deactivate
 }
