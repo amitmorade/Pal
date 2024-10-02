@@ -369,7 +369,10 @@ function getWebviewContent(imageSrc) {
                 border-radius: 5px;
                 height: 30px;
                 background: gray;
-                transition: background 0.3s;
+                transition: background 0.5s;
+                display: flex;
+                justify-content: center;
+                align-items: center;
             }
             .popup .bar:hover {
                 background: lightgreen;
@@ -379,9 +382,10 @@ function getWebviewContent(imageSrc) {
     <body>
         <img src="${imageSrc}" alt="Solly" onclick="togglePopupAndExpand()">
         <div class="popup" id="popup">
-            <div class="bar"></div>
-            <div class="bar"></div>
-            <div class="bar"></div>
+            <div class="bar"> Solly Docs </div>
+            <div class="bar"> Jira Tasks </div>
+            <div class="bar"> Reminders </div>
+            <div class="bar"> Hide </div>
         </div>
         <script>
             function togglePopupAndExpand() {
