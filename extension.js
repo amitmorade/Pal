@@ -5,40 +5,50 @@ const path = require('path');
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-        console.log('No active editor found.');
-        return;
+    let sollyPanel = null;
+
+    function createSollyWebview() {
+        if (sollyPanel) {
+            // If the panel already exists, reveal it
+            sollyPanel.reveal(vscode.ViewColumn.Beside);
+            return;
+        }
+
+        // Create a new column for the webview panel
+        vscode.commands.executeCommand('workbench.action.splitEditorRight').then(() => {
+            // Decrease the size of the new column, but keep the original one unchanged
+            vscode.commands.executeCommand('workbench.action.decreaseViewSize');
+
+            sollyPanel = vscode.window.createWebviewPanel(
+                'sollyOverlay', // Identifies the type of the webview. Used internally
+                'Solly', // Title of the panel displayed to the user
+                vscode.ViewColumn.Beside, // Editor column to show the new webview panel in
+                {
+                    enableScripts: true,
+                    retainContextWhenHidden: true,
+                }
+            );
+
+            const imagePath = vscode.Uri.file(path.join(context.extensionPath, 'images', 'solly.png'));
+            const imageSrc = sollyPanel.webview.asWebviewUri(imagePath);
+            sollyPanel.webview.html = getWebviewContent(imageSrc);
+
+            // Add a click event listener to the webview
+            sollyPanel.webview.onDidReceiveMessage(message => {
+                if (message.command === 'imageClicked') {
+                    vscode.window.showInformationMessage();
+                }
+            });
+
+            // Reset the panel variable when the panel is closed
+            sollyPanel.onDidDispose(() => {
+                sollyPanel = null;
+            });
+        });
     }
 
-    // Create a new column for the webview panel
-    vscode.commands.executeCommand('workbench.action.splitEditorRight').then(() => {
-        // Decrease the size of the new column, but keep the original one unchanged
-        vscode.commands.executeCommand('workbench.action.decreaseViewSize');
-        vscode.commands.executeCommand('workbench.action.decreaseViewSize');
-        vscode.commands.executeCommand('workbench.action.decreaseViewSize'); // Add more as needed
-
-        const panel = vscode.window.createWebviewPanel(
-            'sollyOverlay', // Identifies the type of the webview. Used internally
-            'Solly', // Title of the panel displayed to the user
-            vscode.ViewColumn.Beside, // Editor column to show the new webview panel in
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true,
-            }
-        );
-
-        const imagePath = vscode.Uri.file(path.join(context.extensionPath, 'images', 'solly.png'));
-        const imageSrc = panel.webview.asWebviewUri(imagePath);
-        panel.webview.html = getWebviewContent(imageSrc);
-
-        // Add a click event listener to the webview
-        panel.webview.onDidReceiveMessage(message => {
-            if (message.command === 'imageClicked') {
-                vscode.window.showInformationMessage('Image clicked!');
-            }
-        });
-    });
+    // Create the Solly webview when the extension is activated
+    createSollyWebview();
 }
 
 function getWebviewContent(imageSrc) {
@@ -90,7 +100,10 @@ function getWebviewContent(imageSrc) {
                 border-radius: 5px;
                 height: 30px;
                 background: gray;
-                transition: background 0.3s;
+                transition: background 0.5s;
+                display: flex;
+                justify-content: center;
+                align-items: center;
             }
             .popup .bar:hover {
                 background: lightgreen;
@@ -100,9 +113,10 @@ function getWebviewContent(imageSrc) {
     <body>
         <img src="${imageSrc}" alt="Solly" onclick="togglePopupAndExpand()">
         <div class="popup" id="popup">
-            <div class="bar"></div>
-            <div class="bar"></div>
-            <div class="bar"></div>
+            <div class="bar"> Solly Docs </div>
+            <div class="bar"> Jira Tasks </div>
+            <div class="bar"> Reminders </div>
+            <div class="bar"> Hide </div>
         </div>
         <script>
             function togglePopupAndExpand() {
