@@ -9,18 +9,32 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:extension.imageClicked",
+    "onDidOpenTextDocument"
+  ],
   "main": "./extension.js",
   "contributes": {
-    "commands": [{
-      "command": "pal.helloWorld",
-      "title": "Hello World"
-    }]
+    "commands": [
+      {
+        "command": "extension.toggleChatBot",
+        "title": "Open ChatBot"
+      },
+      {
+        "command": "extension.imageClicked",
+        "title": "Image Clicked"
+      }
+    ]
   },
   "scripts": {
     "lint": "eslint .",
     "pretest": "npm run lint",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "postinstall": "node ./node_modules/vscode/bin/install"
   },
   "devDependencies": {
     "@types/vscode": "^1.93.0",
@@ -28,6 +42,12 @@
     "@types/node": "20.x",
     "eslint": "^9.11.1",
     "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1"
+    "@vscode/test-electron": "^2.4.1",
+    "typescript": "^4.0.3",
+    "vscode": "^1.1.37",
+    "vscode-test": "^1.4.0"
+  },
+  "dependencies": {
+    "axios": "^1.7.7"
   }
 }
