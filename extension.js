@@ -78,8 +78,11 @@ function openWebviewPanel(context) {
                     panel.webview.postMessage({ command: 'reply', text: errorMessage });
                 }
             } else if (message.command === 'openJira') {
-                // Open the Jira webview
-                vscode.commands.executeCommand('extension.openJiraWebview');
+                // Change the content of the existing panel to the Jira content
+                panel.webview.html = getJiraHtml();
+            } else if (message.command === 'goBack') {
+                // Change the content of the existing panel back to the Solly options page
+                panel.webview.html = getChatbotHtml(context);
             }
         });
 
@@ -460,17 +463,44 @@ function getOptionsHtml(context) {
     `;
 }
 
+//Jira API 
+async function fetchJiraTasks() {
+    const jiraDomain = 'https://xyz-jira.atlassian.net/'; // Replace with your Jira domain
+    const apiEndpoint = `/rest/api/3/search`; // Jira API endpoint for searching issues
+    const authToken = 'YOUR_AUTH'; // Replace with your Jira API token
+    const username = 'xyz@xyz.com'; // Replace with your Jira account email
+
+    const url = `https://${jiraDomain}${apiEndpoint}`;
+
+    try {
+        const response = await axios.get(url, {
+            auth: {
+                username: username,
+                password: authToken
+            }
+        });
+        return response.data; // Return the fetched tasks
+    } catch (error) {
+        console.error('Error fetching Jira tasks:', error);
+        throw new Error('Failed to fetch Jira tasks');
+    }
+}
+
 //function you can use to open the Jira webview
-function openJiraWebview(context) {
+async function openJiraWebview(context) {
     const jiraPanel = vscode.window.createWebviewPanel(
-        'jira', // Internal identifier
-        'Jira Tasks', // Title displayed on the panel
-        vscode.ViewColumn.One, // Display in the first column
-        { enableScripts: true } // Enable JavaScript in the Webview
+        'jira',
+        'Jira Tasks',
+        vscode.ViewColumn.One,
+        { enableScripts: true }
     );
 
-    // Set the initial content for the Jira webview
-    jiraPanel.webview.html = getJiraHtml();
+    try {
+        const tasks = await fetchJiraTasks(); // Fetch tasks from Jira
+        jiraPanel.webview.html = getJiraHtml(tasks); // Pass tasks to HTML function
+    } catch (error) {
+        jiraPanel.webview.html = `<h1>Error loading tasks</h1>`;
+    }
 }
 
 // HTML content for the Jira webview
@@ -506,17 +536,70 @@ function getJiraHtml() {
           padding: 10px;
           overflow-y: auto;
         }
+        .task {
+          background-color: white;
+          margin: 5px 0;
+          padding: 10px;
+          border-radius: 5px;
+          box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .button {
+          margin: 10px;
+          padding: 10px;
+          background-color: #4CAF50;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+        }
+        .button:hover {
+          background-color: #45a049;
+        }
+        .button-container {
+          display: flex;
+          justify-content: center;
+          margin-top: 20px;
+          margin-left: 10px;
+          margin-right: 10px;
+        }
       </style>
     </head>
     <body>
       <div class="header">Jira Tasks</div>
       <div class="content">
-        <!-- Add your Jira content here -->
+        <div class="task">
+          <h3>Jira Name: [Project Name]</h3>
+          <p>Tasks Assigned: [Task Count]</p>
+          <p>Due Dates: [Due Dates]</p>
+          <div class="button-container">
+          <button class="button" onclick="handleStarted()">Started</button>
+          <button class="button" onclick="handleEnded()">Ended</button>
+          </div>
+        </div>
+        <!-- Repeat .task divs for each task -->
       </div>
+      <button class="button" onclick="goBack()">Back</button>
+
+      <script>
+        const vscode = acquireVsCodeApi();
+        
+        function goBack() {
+          vscode.postMessage({ command: 'goBack' });
+        }
+
+        function handleStarted() {
+          vscode.postMessage({ command: 'filterStarted' });
+        }
+
+        function handleEnded() {
+          vscode.postMessage({ command: 'filterEnded' });
+        }
+      </script>
     </body>
     </html>
   `;
 }
+
 
 // Function to deactivate the extension
 function deactivate() { }
