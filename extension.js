@@ -3,7 +3,7 @@ const axios = require('axios');
 const path = require('path'); // Required for file path
 
 let chatHistory = []; // Global variable to store chat history
-let panel = null; // Chatbot Webview Panel
+let panel; // Chatbot Webview Panel
 let sollyPanel = null; // Solly Webview Panel
 
 /**
@@ -84,6 +84,206 @@ function activate(context) {
 
     context.subscriptions.push(sollyButton);
     context.subscriptions.push(disposableSolly);
+
+    // Register a command to show notifications
+    let disposableNotification = vscode.commands.registerCommand('extension.showNotification', (name) => {
+        vscode.window.showInformationMessage(`Reminder: ${name}`);
+    });
+
+    context.subscriptions.push(disposableNotification);
+}
+//create webview content
+function getWebviewContent(imageSrc) {
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Solly</title>
+        <style>
+          body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: flex-end;
+            align-items: flex-end;
+            height: 100vh; /* Full height */
+            background: transparent; /* Transparent background */
+            position: relative;
+            z-index: 9999;
+            min-width: 160px;
+          }
+          img {
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            transition: width 0.3s ease, height 0.3s ease;
+          }
+          img.expanded {
+            width: 60px; /* Increase the size on click */
+            height: 60px;
+          }
+          /* Styles for floating popup */
+          .popup {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 20px;
+            background: transparent; /* Transparent popup background */
+            z-index: 10000;
+            display: none; /* Initially hidden */
+            flex-direction: column; /* Stack bars vertically */
+            gap: 10px; /* Space between the bars */
+          }
+          .popup .bar {
+            width: 150px;
+            border-radius: 5px;
+            height: 30px;
+            background: gray;
+            transition: background 0.5s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer; /* Cursor pointer for bars */
+          }
+          .popup .bar:hover {
+            background: lightgreen; /* Change color on hover */
+          }
+          /* Styles for the reminder form */
+          .reminder-form {
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            background: #f9f9f9; /* Light gray background */
+            padding: 15px; /* Slightly reduce padding for a more compact look */
+            border-radius: 8px; /* Increase border radius for a softer look */
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); /* Softer shadow */
+            max-width: 170px;
+            position: absolute;
+            bottom: 80px; /* Position above the popup */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10001; /* Ensure it is above other elements */
+            margin-bottom: 20px; /* Add bottom margin */
+          }
+
+          /* Style for inputs and button */
+          .reminder-form input, .reminder-form button {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc; /* Light gray border */
+            width: 120px; /* Maintain the width */
+            font-family: Arial, sans-serif; /* Change font for better aesthetics */
+            font-size: 14px; /* Increase font size for readability */
+          }
+
+          /* Change input and button background on focus */
+          .reminder-form input:focus, .reminder-form button:focus {
+            border-color: #4a90e2; /* Blue border on focus */
+            outline: none; /* Remove outline */
+            box-shadow: 0 0 5px rgba(74, 144, 226, 0.5); /* Light blue shadow */
+          }
+
+          /* Style button */
+          .reminder-form button {
+            background-color: #4a90e2; /* Blue background */
+            color: white; /* White text color */
+            cursor: pointer; /* Pointer cursor for button */
+            transition: background-color 0.3s; /* Smooth transition for hover effect */
+          }
+
+          /* Button hover effect */
+          .reminder-form button:hover {
+            background-color: #357ABD; /* Darker blue on hover */
+          }
+
+        </style>
+      </head>
+      <body>
+        <img src="${imageSrc}" alt="Solly" onclick="togglePopupAndExpand()">
+        <div class="popup" id="popup">
+          <div class="bar" onclick="showReminderForm()"> Reminders </div>
+          <div class="bar"> Solly Docs </div>
+          <div class="bar"> Jira Tasks </div>
+          <div class="bar" onclick="hidePopup()"> Hide </div>
+        </div>
+        <div class="reminder-form" id="reminder-form">
+          <input type="text" id="reminder-name" placeholder="Reminder Name">
+          <input type="datetime-local" id="reminder-time">
+          <button onclick="setReminder()">Set Reminder</button>
+        </div>
+        <script>
+          function togglePopupAndExpand() {
+            const popup = document.getElementById('popup');
+            const img = document.querySelector('img');
+  
+            // Toggle popup visibility
+            if (popup.style.display === 'none' || popup.style.display === '') {
+              popup.style.display = 'flex'; // Show the popup
+            } else {
+              popup.style.display = 'none'; // Hide the popup
+            }
+  
+            // Toggle Solly's size by toggling the 'expanded' class
+            img.classList.toggle('expanded');
+  
+            const vscode = acquireVsCodeApi();
+            vscode.postMessage({ command: 'imageClicked' });
+          }
+  
+          function showReminderForm() {
+            const form = document.getElementById('reminder-form');
+            const popup = document.getElementById('popup');
+            form.style.display = 'flex';
+            popup.style.display = 'none'; // Hide the popup when the form is displayed
+          }
+  
+          function hidePopup() {
+            const popup = document.getElementById('popup');
+            popup.style.display = 'none'; // Hide the popup
+          }
+  
+          function setReminder() {
+            const name = document.getElementById('reminder-name').value;
+            const time = document.getElementById('reminder-time').value;
+            const reminderTime = new Date(time).getTime();
+            const currentTime = new Date().getTime();
+            const delay = reminderTime - currentTime;
+  
+            if (delay > 0) {
+              setTimeout(() => {
+                alert(\`Reminder: \${name}\`);
+              }, delay);
+            } else {
+              alert('Please set a future time for the reminder.');
+            }
+  
+            // Hide the form after setting the reminder
+            const form = document.getElementById('reminder-form');
+            form.style.display = 'none'; // Hide the form
+            const popup = document.getElementById('popup');
+            popup.style.display = 'flex'; // Show the popup again
+          }
+
+          // Close the reminder form when clicking outside of it
+          document.addEventListener('click', function(event) {
+            const form = document.getElementById('reminder-form');
+            const popup = document.getElementById('popup');
+            const img = document.querySelector('img');
+
+            // Check if the click is outside the reminder form and popup
+            if (!form.contains(event.target) && !popup.contains(event.target) && event.target !== img) {
+              form.style.display = 'none'; // Hide the reminder form
+              popup.style.display = 'flex'; // Show the popup again if it was hidden
+            }
+          });
+        </script>
+      </body>
+      </html>
+    `;
 }
 
 // Function to create the Solly Webview
@@ -117,6 +317,8 @@ function createSollyWebview(context) {
         sollyPanel.webview.onDidReceiveMessage(message => {
             if (message.command === 'imageClicked') {
                 vscode.window.showInformationMessage('Solly image clicked!');
+            } else if (message.command === 'showNotification') {
+                vscode.window.showInformationMessage(`Reminder: ${message.name}`);
             }
         });
 
@@ -325,199 +527,16 @@ function getChatbotHtml() {
     </html>
   `;
 }
-function getWebviewContent(imageSrc) {
-    return `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Solly</title>
-        <style>
-          body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            display: flex;
-            justify-content: flex-end;
-            align-items: flex-end;
-            height: 100vh; /* Full height */
-            background: transparent; /* Transparent background */
-            position: relative;
-            z-index: 9999;
-            min-width: 160px;
-          }
-          img {
-            width: 30px;
-            height: 30px;
-            cursor: pointer;
-            transition: width 0.3s ease, height 0.3s ease;
-          }
-          img.expanded {
-            width: 60px; /* Increase the size on click */
-            height: 60px;
-          }
-          /* Styles for floating popup */
-          .popup {
-            position: absolute;
-            bottom: 50px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 20px;
-            background: transparent; /* Transparent popup background */
-            z-index: 10000;
-            display: none; /* Initially hidden */
-            flex-direction: column; /* Stack bars vertically */
-            gap: 10px; /* Space between the bars */
-          }
-          .popup .bar {
-            width: 150px;
-            border-radius: 5px;
-            height: 30px;
-            background: gray;
-            transition: background 0.5s;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer; /* Cursor pointer for bars */
-          }
-          .popup .bar:hover {
-            background: lightgreen; /* Change color on hover */
-          }
-          /* Styles for the reminder form */
-          .reminder-form {
-            display: none;
-            flex-direction: column;
-            gap: 10px;
-            background: #f9f9f9; /* Light gray background */
-            padding: 15px; /* Slightly reduce padding for a more compact look */
-            border-radius: 8px; /* Increase border radius for a softer look */
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); /* Softer shadow */
-            max-width: 170px;
-            position: absolute;
-            bottom: 80px; /* Position above the popup */
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 10001; /* Ensure it is above other elements */
-            margin-bottom: 20px; /* Add bottom margin */
-          }
 
-          /* Style for inputs and button */
-          .reminder-form input, .reminder-form button {
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid #ccc; /* Light gray border */
-            width: 120px; /* Maintain the width */
-            font-family: Arial, sans-serif; /* Change font for better aesthetics */
-            font-size: 14px; /* Increase font size for readability */
-          }
-
-          /* Change input and button background on focus */
-          .reminder-form input:focus, .reminder-form button:focus {
-            border-color: #4a90e2; /* Blue border on focus */
-            outline: none; /* Remove outline */
-            box-shadow: 0 0 5px rgba(74, 144, 226, 0.5); /* Light blue shadow */
-          }
-
-          /* Style button */
-          .reminder-form button {
-            background-color: #4a90e2; /* Blue background */
-            color: white; /* White text color */
-            cursor: pointer; /* Pointer cursor for button */
-            transition: background-color 0.3s; /* Smooth transition for hover effect */
-          }
-
-          /* Button hover effect */
-          .reminder-form button:hover {
-            background-color: #357ABD; /* Darker blue on hover */
-          }
-
-        </style>
-      </head>
-      <body>
-        <img src="${imageSrc}" alt="Solly" onclick="togglePopupAndExpand()">
-        <div class="popup" id="popup">
-          <div class="bar" onclick="showReminderForm()"> Reminders </div>
-          <div class="bar"> Solly Docs </div>
-          <div class="bar"> Jira Tasks </div>
-          <div class="bar" onclick="hidePopup()"> Hide </div>
-        </div>
-        <div class="reminder-form" id="reminder-form">
-          <input type="text" id="reminder-name" placeholder="Reminder Name">
-          <input type="datetime-local" id="reminder-time">
-          <button onclick="setReminder()">Set Reminder</button>
-        </div>
-        <script>
-          function togglePopupAndExpand() {
-            const popup = document.getElementById('popup');
-            const img = document.querySelector('img');
-  
-            // Toggle popup visibility
-            if (popup.style.display === 'none' || popup.style.display === '') {
-              popup.style.display = 'flex'; // Show the popup
-            } else {
-              popup.style.display = 'none'; // Hide the popup
-            }
-  
-            // Toggle Solly's size by toggling the 'expanded' class
-            img.classList.toggle('expanded');
-  
-            const vscode = acquireVsCodeApi();
-            vscode.postMessage({ command: 'imageClicked' });
-          }
-  
-          function showReminderForm() {
-            const form = document.getElementById('reminder-form');
-            const popup = document.getElementById('popup');
-            form.style.display = 'flex';
-            popup.style.display = 'none'; // Hide the popup when the form is displayed
-          }
-  
-          function hidePopup() {
-            const popup = document.getElementById('popup');
-            popup.style.display = 'none'; // Hide the popup
-          }
-  
-          function setReminder() {
-            const name = document.getElementById('reminder-name').value;
-            const time = document.getElementById('reminder-time').value;
-            const reminderTime = new Date(time).getTime();
-            const currentTime = new Date().getTime();
-            const delay = reminderTime - currentTime;
-  
-            if (delay > 0) {
-              setTimeout(() => {
-                alert(\`Reminder: \${name}\`);
-              }, delay);
-            } else {
-              alert('Please set a future time for the reminder.');
-            }
-  
-            // Hide the form after setting the reminder
-            const form = document.getElementById('reminder-form');
-            form.style.display = 'none'; // Hide the form
-            const popup = document.getElementById('popup');
-            popup.style.display = 'flex'; // Show the popup again
-          }
-
-          // Close the reminder form when clicking outside of it
-          document.addEventListener('click', function(event) {
-            const form = document.getElementById('reminder-form');
-            const popup = document.getElementById('popup');
-            const img = document.querySelector('img');
-
-            // Check if the click is outside the reminder form and popup
-            if (!form.contains(event.target) && !popup.contains(event.target) && event.target !== img) {
-              form.style.display = 'none'; // Hide the reminder form
-              popup.style.display = 'flex'; // Show the popup again if it was hidden
-            }
-          });
-        </script>
-      </body>
-      </html>
-    `;
-}
-
+// Inside your activate function, after creating the WebView
+panel.webview.onDidReceiveMessage(message => {
+    switch (message.command) {
+        case 'setReminderClicked':
+            // Show an alert in VS Code
+            vscode.window.showInformationMessage('Set Reminder button was clicked!');
+            break;
+    }
+});
 
 function deactivate() { }
 
