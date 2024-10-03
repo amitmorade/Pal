@@ -3,59 +3,65 @@ const axios = require('axios');
 const path = require('path'); // Required for file path
 
 let chatHistory = []; // Global variable to store chat history
-let panel = null; // Chatbot Webview Panel
-let sollyPanel = null; // Solly Webview Panel
+let panel = null; // Single Webview Panel (for both Chatbot and Options)
 
 /**
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
-  // Create a floating button in the status bar for the chatbot
-  let chatButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  chatButton.text = '💬 Chat'; // Text + emoji (you can replace this with an icon)
-  chatButton.tooltip = 'Click to open the chatbot';
-  chatButton.command = 'extension.toggleChatBot';
-  chatButton.show(); // Show the button in the status bar
-
-  // Create a floating button in the status bar for Solly
-  let sollyButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 101);
-  sollyButton.text = '⚙️ Solly'; // Text + emoji (you can replace this with an icon)
-  sollyButton.tooltip = 'Click to open Solly';
-  sollyButton.command = 'extension.toggleSolly';
-  sollyButton.show(); // Show the button in the status bar
-
-  // Register a command to toggle the chatbot window
-  let disposableChatbot = vscode.commands.registerCommand('extension.toggleChatBot', () => {
-    if (panel) {
-      panel.dispose(); // Close the chat window if it's open
-      panel = null;
-    } else {
-      // Create and open the chat window (Webview)
+    // Create a floating button in the status bar for the chatbot
+    let chatButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    chatButton.text = '💬 Chat'; // Text + emoji (you can replace this with an icon)
+    chatButton.tooltip = 'Click to open the chatbot';
+    chatButton.command = 'extension.toggleChatBot';
+    chatButton.show(); // Show the button in the status bar
+  
+    // Automatically open the webview (with Otter and options) on launch
+    openWebviewPanel(context); // Call this function to open the panel on extension launch
+  
+    // Register a command to toggle the chatbot window (if needed)
+    let disposableChatbot = vscode.commands.registerCommand('extension.toggleChatBot', () => {
+      if (panel) {
+        panel.dispose(); // Close the chat window if it's open
+        panel = null;
+      } else {
+        openWebviewPanel(context); // Open the panel when the button is clicked
+      }
+    });
+  
+    context.subscriptions.push(chatButton);
+    context.subscriptions.push(disposableChatbot);
+  }
+  
+  // Function to open the Webview panel
+  function openWebviewPanel(context) {
+    if (!panel) {
+      // Create and open the webview (Options and Chatbot) in the extreme right column
       panel = vscode.window.createWebviewPanel(
         'chatbot', // Internal identifier
-        'ChatBot', // Title displayed on the panel
-        vscode.ViewColumn.One, // Display in the current column
+        'Solly Options', // Title displayed on the panel
+        vscode.ViewColumn.Three, // Display in the extreme right column
         { enableScripts: true } // Enable JavaScript in the Webview
       );
-
-      // Set the content for the chat window (Webview)
-      panel.webview.html = getChatbotHtml();
-
-      // Send the existing chat history to the Webview so it can be re-rendered
-      panel.webview.postMessage({ command: 'loadHistory', history: chatHistory });
-
-      // Listen for messages from the Webview (when the user sends a message)
+  
+      // Set the initial content for the webview (Options panel)
+      panel.webview.html = getOptionsHtml(context);
+  
+      // Handle messages from the Webview (toggle between options and chatbot)
       panel.webview.onDidReceiveMessage(async (message) => {
-        if (message.command === 'askQuestion') {
-          // Add the user's message to the chat history
+        if (message.command === 'openChatbot') {
+          // Load the chatbot HTML inside the same panel
+          panel.webview.html = getChatbotHtml(context);
+        } else if (message.command === 'askQuestion') {
+          // Handle chatbot questions
           chatHistory.push({ sender: 'user', text: message.text });
-
+  
           try {
             // Call the chatbot API with the user's message
             const apiResponse = await callChatbotAPI(message.text);
             // Add the bot's response to the chat history
             chatHistory.push({ sender: 'bot', text: apiResponse });
-
+  
             // Send the response back to the Webview
             panel.webview.postMessage({ command: 'reply', text: apiResponse });
           } catch (error) {
@@ -66,65 +72,337 @@ function activate(context) {
           }
         }
       });
-
+  
       // Reset panel when it is closed
       panel.onDidDispose(() => {
         panel = null;
       });
     }
-  });
+  }
+  
 
-  context.subscriptions.push(chatButton);
-  context.subscriptions.push(disposableChatbot);
+function getChatbotHtml(context) {
+  const imageSrc = vscode.Uri.joinPath(context.extensionUri, 'images', 'solly.png');
+  const webviewImageSrc = panel.webview.asWebviewUri(imageSrc);
 
-  // Register a command to toggle the Solly window
-  let disposableSolly = vscode.commands.registerCommand('extension.toggleSolly', () => {
-    createSollyWebview(context); // Call function to create Solly Webview
-  });
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>ChatBot</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          margin: 0;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          height: 100vh;
+          background-color: #f7f7f7;
+          position: relative;
+        }
+        .chat-header {
+          background-color: #4CAF50;
+          color: white;
+          padding: 15px;
+          text-align: center;
+        }
+        .chat-container {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          padding: 10px;
+          overflow-y: auto;
+        }
+        .message {
+          margin-bottom: 10px;
+          padding: 10px;
+          border-radius: 10px;
+          max-width: 60%; /* Set a max width for messages */
+          word-wrap: break-word; /* Ensure long words break and wrap */
+        }
+        .message.user {
+          background-color: #e6ffe6;
+          align-self: flex-end;
+          color: black;
+        }
+        .message.bot {
+          background-color: #d9d9d9;
+          align-self: flex-start;
+          color: black;
+          white-space: pre-wrap; /* Ensures white space and line breaks are preserved */
+        }
+        .chat-footer {
+          display: flex;
+          padding: 10px;
+          background-color: #fff;
+          border-top: 1px solid #ddd;
+        }
+        .chat-input {
+          flex: 1;
+          padding: 10px;
+          border-radius: 5px;
+          border: 1px solid #ddd;
+        }
+        .chat-button {
+          background-color: #4CAF50;
+          color: white;
+          border: none;
+          padding: 10px;
+          margin-left: 10px;
+          border-radius: 5px;
+          cursor: pointer;
+        }
+        .chat-button:disabled {
+          background-color: grey;
+          cursor: not-allowed;
+        }
+        .otter-img {
+          width: 50px;
+          height: 50px;
+          position: absolute;
+          bottom: 60px; /* Adjust the position above the Send button */
+          right: 20px;
+          cursor: pointer;
+          z-index: 9999; /* Ensure it's clickable on top of the chat */
+        }
+        .popup {
+          position: absolute;
+          bottom: 120px; /* Adjust as needed */
+          right: 20px;
+          background-color: rgba(255, 255, 255, 0.9); /* Make popup more visible */
+          border-radius: 10px;
+          padding: 10px;
+          display: none;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          z-index: 9999; /* Ensure it appears above the chat */
+        }
+        .popup.active {
+          display: flex; /* Show the popup when active */
+        }
+        .button {
+          background-color: #4CAF50;
+          color: white;
+          padding: 10px;
+          border-radius: 5px;
+          text-align: center;
+          width: 150px;
+          cursor: pointer;
+          transition: background-color 0.3s ease;
+        }
+        .button:hover {
+          background-color: #45a049;
+        }
+        .button:active {
+          background-color: #3d8b40;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="chat-header">Ask Solly</div>
+      <div id="chat-container" class="chat-container"></div>
+      <div class="chat-footer">
+        <input id="chat-input" class="chat-input" type="text" placeholder="Type your message..." />
+        <button id="send-button" class="chat-button" onclick="sendMessage()">Send</button>
+      </div>
+      <img src="${webviewImageSrc}" alt="Otter" class="otter-img" onclick="toggleOptions()" />
+      <div id="popup" class="popup">
+        <div class="button" onclick="openChatbot(true)">Solly Docs</div>
+        <div class="button">Jira Tasks</div>
+        <div class="button">Reminders</div>
+        <div class="button" onclick="hidePopup()">Hide</div>
+      </div>
 
-  context.subscriptions.push(sollyButton);
-  context.subscriptions.push(disposableSolly);
+      <script>
+        const vscode = acquireVsCodeApi();
+        let chatHistory = []; // Store chat history globally
+
+        function sendMessage() {
+          const inputField = document.getElementById('chat-input');
+          const sendButton = document.getElementById('send-button');
+          const message = inputField.value;
+
+          if (message) {
+            appendMessage('user', message);
+
+            // Disable the button and input while chatbot is processing
+            sendButton.disabled = true;
+            inputField.disabled = true;
+
+            vscode.postMessage({ command: 'askQuestion', text: message });
+            inputField.value = '';  // Clear input field
+          }
+        }
+
+        function appendMessage(sender, text) {
+          const container = document.getElementById('chat-container');
+          const messageDiv = document.createElement('div');
+          messageDiv.className = 'message ' + sender;
+          messageDiv.innerText = text;
+          container.appendChild(messageDiv);
+          container.scrollTop = container.scrollHeight;  // Auto-scroll to the bottom
+        }
+
+        function toggleOptions() {
+          const popup = document.getElementById('popup');
+          popup.classList.toggle('active'); // Toggle visibility of popup
+        }
+
+        function hidePopup() {
+          const popup = document.getElementById('popup');
+          popup.classList.remove('active'); // Hide the popup
+        }
+
+        function openChatbot(reset) {
+          hidePopup();  // Hide the popup when opening the chat
+          if (reset) {
+            // Clear history if "Solly Docs" is clicked to reset the session
+            chatHistory = [];
+            vscode.postMessage({ command: 'openChatbot', reset: true });
+          } else {
+            // Open the chat normally without resetting the history
+            vscode.postMessage({ command: 'openChatbot', reset: false });
+          }
+        }
+
+        // Typing simulation: Append the bot's response character by character
+        function typeMessage(text) {
+          const container = document.getElementById('chat-container');
+          const messageDiv = document.createElement('div');
+          messageDiv.className = 'message bot';
+          container.appendChild(messageDiv);
+
+          // Replace newlines with <br> to maintain formatting
+          const formattedText = text.replace(/\\n/g, '<br>');
+
+          let i = 0;
+
+          function type() {
+            if (i < formattedText.length) {
+              messageDiv.innerHTML += formattedText.charAt(i);  // Append one character at a time
+              i++;
+              setTimeout(type, 50);  // Set typing speed (50ms between each character)
+            } else {
+              document.getElementById('send-button').disabled = false;  // Re-enable the button after typing is complete
+              document.getElementById('chat-input').disabled = false;  // Re-enable the input field
+              container.scrollTop = container.scrollHeight;  // Auto-scroll to the bottom
+            }
+          }
+
+          type();  // Start typing
+        }
+
+        // Listen for messages from the extension
+        window.addEventListener('message', event => {
+          const message = event.data;
+
+          if (message.command === 'reply') {
+            // Display the response using the typing effect
+            typeMessage(message.text);
+          }
+        });
+      </script>
+    </body>
+    </html>
+  `;
 }
 
-// Function to create the Solly Webview
-function createSollyWebview(context) {
-  if (sollyPanel) {
-    // If the panel already exists, reveal it
-    sollyPanel.reveal(vscode.ViewColumn.Beside);
-    return;
-  }
 
-  // Create a new column for the webview panel
-  vscode.commands.executeCommand('workbench.action.splitEditorRight').then(() => {
-    // Decrease the size of the new column, but keep the original one unchanged
-    vscode.commands.executeCommand('workbench.action.decreaseViewSize');
+// HTML content for the options panel (styled like the design)
+function getOptionsHtml(context) {
+  const imageSrc = vscode.Uri.joinPath(context.extensionUri, 'images', 'solly.png');
+  const webviewImageSrc = panel.webview.asWebviewUri(imageSrc);
 
-    sollyPanel = vscode.window.createWebviewPanel(
-      'sollyOverlay', // Identifies the type of the webview. Used internally
-      'Solly', // Title of the panel displayed to the user
-      vscode.ViewColumn.Beside, // Editor column to show the new webview panel in
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-      }
-    );
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Solly Options</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          margin: 0;
+          padding: 0;
+          display: flex;
+          justify-content: flex-end;
+          align-items: flex-end;
+          height: 100vh;
+          background-color: #1e1e1e; /* Match the VS Code theme */
+          position: relative;
+        }
+        img {
+          width: 50px;
+          height: 50px;
+          cursor: pointer;
+          position: absolute;
+          bottom: 10px;
+          right: 10px;
+        }
+        .popup {
+          position: absolute;
+          bottom: 70px;
+          right: 10px;
+          background-color: rgba(255, 255, 255, 0.1);
+          border-radius: 10px;
+          padding: 10px;
+          display: none;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+        }
+        .popup.active {
+          display: flex; /* Show the popup when active */
+        }
+        .button {
+          background-color: grey;
+          color: white;
+          padding: 10px;
+          border-radius: 5px;
+          text-align: center;
+          width: 150px;
+          cursor: pointer;
+          transition: background-color 0.3s ease;
+        }
+        .button:hover {
+          background-color: #4CAF50;
+        }
+      </style>
+    </head>
+    <body>
+      <img src="${webviewImageSrc}" alt="Solly" onclick="togglePopup()" />
+      <div id="popup" class="popup">
+        <div class="button" onclick="openChatbot()">Solly Docs</div>
+        <div class="button">Jira Tasks</div>
+        <div class="button">Reminders</div>
+        <div class="button" onclick="hidePopup()">Hide</div>
+      </div>
 
-    const imagePath = vscode.Uri.file(path.join(context.extensionPath, 'images', 'solly.png'));
-    const imageSrc = sollyPanel.webview.asWebviewUri(imagePath);
-    sollyPanel.webview.html = getWebviewContent(imageSrc);
+      <script>
+        const vscode = acquireVsCodeApi();
 
-    // Add a click event listener to the webview
-    sollyPanel.webview.onDidReceiveMessage(message => {
-      if (message.command === 'imageClicked') {
-        vscode.window.showInformationMessage('Solly image clicked!');
-      }
-    });
+        function openChatbot() {
+          vscode.postMessage({ command: 'openChatbot' });
+        }
 
-    // Reset the panel variable when the panel is closed
-    sollyPanel.onDidDispose(() => {
-      sollyPanel = null;
-    });
-  });
+        function togglePopup() {
+          const popup = document.getElementById('popup');
+          popup.classList.toggle('active'); // Toggle visibility of popup
+        }
+
+        function hidePopup() {
+          const popup = document.getElementById('popup');
+          popup.classList.remove('active'); // Hide the popup
+        }
+      </script>
+    </body>
+    </html>
+  `;
 }
 
 // Function to call the chatbot API
@@ -154,268 +432,6 @@ async function callChatbotAPI(userMessage) {
     console.error('Error calling the chatbot API:', error);
     return 'Sorry, there was an error processing your request.';
   }
-}
-
-// HTML content for the chat window
-function getChatbotHtml() {
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>ChatBot</title>
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          margin: 0;
-          padding: 0;
-          display: flex;
-          flex-direction: column;
-          height: 100vh;
-          background-color: #f7f7f7;
-        }
-
-        .chat-header {
-          background-color: #4CAF50;
-          color: white;
-          padding: 15px;
-          text-align: center;
-        }
-
-        .chat-container {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          padding: 10px;
-          overflow-y: auto;
-        }
-
-        .message {
-          margin-bottom: 10px;
-          padding: 10px;
-          border-radius: 10px;
-          max-width: 70%;
-        }
-
-        .message.user {
-          background-color: #e6ffe6;
-          align-self: flex-end;
-          color: black;
-        }
-
-        .message.bot {
-          background-color: #d9d9d9;
-          align-self: flex-start;
-          color: black;
-        }
-
-        .chat-footer {
-          display: flex;
-          padding: 10px;
-          background-color: #fff;
-          border-top: 1px solid #ddd;
-        }
-
-        .chat-input {
-          flex: 1;
-          padding: 10px;
-          border-radius: 5px;
-          border: 1px solid #ddd;
-        }
-
-        .chat-button {
-          background-color: #4CAF50;
-          color: white;
-          border: none;
-          padding: 10px;
-          margin-left: 10px;
-          border-radius: 5px;
-          cursor: pointer;
-        }
-
-        .chat-button:disabled {
-          background-color: grey;
-          cursor: not-allowed;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="chat-header">Ask Amit</div>
-      <div id="chat-container" class="chat-container"></div>
-      <div class="chat-footer">
-        <input id="chat-input" class="chat-input" type="text" placeholder="Type your message..." />
-        <button id="send-button" class="chat-button" onclick="sendMessage()">Send</button>
-      </div>
-
-      <script>
-        const vscode = acquireVsCodeApi();
-
-        function sendMessage() {
-          const inputField = document.getElementById('chat-input');
-          const sendButton = document.getElementById('send-button');
-          const message = inputField.value;
-
-          if (message) {
-            appendMessage('user', message);
-
-            // Disable the button and input while chatbot is processing
-            sendButton.disabled = true;
-            inputField.disabled = true;
-
-            vscode.postMessage({ command: 'askQuestion', text: message });
-            inputField.value = '';  // Clear input field
-          }
-        }
-
-        function appendMessage(sender, text) {
-          const container = document.getElementById('chat-container');
-          const messageDiv = document.createElement('div');
-          messageDiv.className = 'message ' + sender;
-          messageDiv.innerText = text;
-          container.appendChild(messageDiv);
-          container.scrollTop = container.scrollHeight;  // Auto-scroll to the bottom
-        }
-
-        // Typing simulation: Append the bot's response character by character
-        function typeMessage(text) {
-          const container = document.getElementById('chat-container');
-          const messageDiv = document.createElement('div');
-          messageDiv.className = 'message bot';
-          container.appendChild(messageDiv);
-
-          let i = 0;
-
-          function type() {
-            if (i < text.length) {
-              messageDiv.innerText += text.charAt(i);  // Append one character at a time
-              i++;
-              setTimeout(type, 50);  // Set typing speed (50ms between each character)
-            } else {
-              document.getElementById('send-button').disabled = false;  // Re-enable the button after typing is complete
-              document.getElementById('chat-input').disabled = false;  // Re-enable the input field
-              container.scrollTop = container.scrollHeight;  // Auto-scroll to the bottom
-            }
-          }
-
-          type();  // Start typing
-        }
-
-        // Load the chat history when the Webview is reloaded
-        function loadHistory(history) {
-          history.forEach(item => {
-            appendMessage(item.sender, item.text);
-          });
-        }
-
-        // Listen for messages from the extension
-        window.addEventListener('message', event => {
-          const message = event.data;
-
-          if (message.command === 'reply') {
-            // Display the response using the typing effect
-            typeMessage(message.text);
-          } else if (message.command === 'loadHistory') {
-            // Load the stored chat history
-            loadHistory(message.history);
-          }
-        });
-      </script>
-    </body>
-    </html>
-  `;
-}
-
-function getWebviewContent(imageSrc) {
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Solly</title>
-      <style>
-        body {
-          margin: 0;
-          padding: 0;
-          overflow: hidden;
-          display: flex;
-          justify-content: flex-end;
-          align-items: flex-end;
-          height: 100vh; /* Full height */
-          background: transparent; /* Transparent background */
-          position: relative;
-          z-index: 9999;
-          min-width: 160px;
-        }
-        img {
-          width: 30px;
-          height: 30px;
-          cursor: pointer;
-          transition: width 0.3s ease, height 0.3s ease;
-        }
-        img.expanded {
-          width: 60px; /* Increase the size on click */
-          height: 60px;
-        }
-        /* Styles for floating popup */
-        .popup {
-          position: absolute;
-          bottom: 50px;
-          left: 50%;
-          transform: translateX(-50%);
-          padding: 20px;
-          background: transparent; /* Transparent popup background */
-          z-index: 10000;
-          display: none; /* Initially hidden */
-          flex-direction: column; /* Stack bars vertically */
-          gap: 10px; /* Space between the bars */
-        }
-        .popup .bar {
-          width: 150px;
-          border-radius: 5px;
-          height: 30px;
-          background: gray;
-          transition: background 0.5s;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-        }
-        .popup .bar:hover {
-          background: lightgreen;
-        }
-      </style>
-    </head>
-    <body>
-      <img src="${imageSrc}" alt="Solly" onclick="togglePopupAndExpand()">
-      <div class="popup" id="popup">
-        <div class="bar"> Solly Docs </div>
-        <div class="bar"> Jira Tasks </div>
-        <div class="bar"> Reminders </div>
-        <div class="bar"> Hide </div>
-      </div>
-      <script>
-        function togglePopupAndExpand() {
-          const popup = document.getElementById('popup');
-          const img = document.querySelector('img');
-
-          // Toggle popup visibility
-          if (popup.style.display === 'none' || popup.style.display === '') {
-            popup.style.display = 'flex'; // Show the popup
-          } else {
-            popup.style.display = 'none'; // Hide the popup
-          }
-
-          // Toggle Solly's size by toggling the 'expanded' class
-          img.classList.toggle('expanded');
-
-          const vscode = acquireVsCodeApi();
-          vscode.postMessage({ command: 'imageClicked' });
-        }
-      </script>
-    </body>
-    </html>
-  `;
 }
 
 function deactivate() {}
